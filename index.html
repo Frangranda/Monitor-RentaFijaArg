@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor LECAPs</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0e16; --surface: #0f1320; --card: #141929; --row-hover: #161c2e;
+    --border: #1e2540; --border-l: #252d45;
+    --text: #e2e8f0; --text-2: #94a3b8; --text-3: #475569;
+    --green: #4ade80; --green-bg: #0f2010; --green-border: #1a3a1a;
+    --blue: #7dd3fc; --amber: #fbbf24; --red: #f87171;
+    --mono: 'JetBrains Mono','Fira Code','Courier New',monospace;
+    --sans: 'Inter',system-ui,sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 0.5px solid var(--border); gap: 16px; flex-wrap: wrap; }
+  .header-left h1 { font-size: 12px; font-weight: 500; letter-spacing: 0.12em; color: var(--text-3); text-transform: uppercase; margin-bottom: 4px; }
+  .status-line { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot.ok { background: var(--green); animation: pulse 2s infinite; }
+  .dot.err { background: var(--red); }
+  .dot.loading { background: var(--amber); animation: pulse 1s infinite; }
+  .dot.idle { background: var(--text-3); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .badge { font-size: 11px; font-family: var(--mono); background: var(--card); color: var(--text-3); padding: 4px 10px; border-radius: 5px; border: 0.5px solid var(--border); }
+
+  /* PANEL */
+  .panel { background: var(--card); border: 0.5px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 0.5px solid var(--border); cursor: pointer; user-select: none; }
+  .panel-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-family: var(--mono); display: flex; align-items: center; gap: 8px; }
+  .panel-arrow { font-size: 10px; color: var(--text-3); transition: transform .2s; }
+  .panel-arrow.open { transform: rotate(180deg); }
+  .panel-body { padding: 16px 18px; display: none; }
+  .panel-body.open { display: block; }
+
+  .upload-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .upload-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); font-family: var(--mono); cursor: pointer; background: var(--surface); border: 0.5px dashed var(--border-l); border-radius: 5px; padding: 7px 14px; transition: border-color .15s; }
+  .upload-label:hover { border-color: var(--blue); color: var(--blue); }
+  input[type=file] { display: none; }
+  .upload-st { font-size: 11px; font-family: var(--mono); color: var(--text-3); }
+  .upload-st.ok { color: var(--green); }
+  .upload-st.err { color: var(--red); }
+  .upload-st.loading { color: var(--amber); }
+
+  .sep-v { width: 1px; height: 20px; background: var(--border); }
+
+  .precio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .precio-item { display: flex; flex-direction: column; gap: 3px; }
+  .precio-label { font-size: 10px; color: var(--text-3); font-family: var(--mono); display: flex; justify-content: space-between; }
+  .precio-venc { color: var(--text-3); font-size: 9px; }
+  .precio-input { background: var(--surface); border: 0.5px solid var(--border-l); border-radius: 5px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 7px 10px; width: 100%; transition: border-color .15s; }
+  .precio-input:focus { outline: none; border-color: var(--blue); }
+  .precio-input.filled { border-color: var(--green-border); color: var(--green); }
+  .precio-input::placeholder { color: var(--text-3); font-size: 11px; }
+
+  .panel-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btn { font-size: 11px; font-family: var(--mono); border-radius: 5px; padding: 7px 16px; cursor: pointer; border: 0.5px solid; transition: background .15s; white-space: nowrap; }
+  .btn-green { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+  .btn-green:hover { background: #162a16; }
+  .btn-ghost { color: var(--text-3); background: transparent; border-color: var(--border); }
+  .btn-ghost:hover { background: var(--surface); color: var(--text-2); }
+  .panel-hint { font-size: 10px; color: var(--text-3); font-family: var(--mono); margin-left: auto; }
+
+  .stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 20px; }
+  .stat { background: var(--card); border: 0.5px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat-label { font-size: 10px; color: var(--text-3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 600; font-family: var(--mono); margin-bottom: 2px; }
+  .stat-sub { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+
+  .table-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 820px; }
+  thead tr { border-bottom: 0.5px solid var(--border); }
+  th { padding: 10px 14px; font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); text-align: right; white-space: nowrap; cursor: pointer; background: var(--card); transition: color .15s; user-select: none; }
+  th:hover { color: var(--text-2); }
+  th:first-child, th:nth-child(2) { text-align: left; }
+  th.sorted { color: var(--green); }
+  tbody tr { border-bottom: 0.5px solid var(--border); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+  td { padding: 10px 14px; font-size: 12px; text-align: right; color: var(--text-2); white-space: nowrap; font-family: var(--mono); }
+  td:first-child { text-align: left; font-weight: 500; color: var(--text); }
+  td:nth-child(2) { text-align: left; }
+  .tir { color: var(--green); font-weight: 500; }
+  .tna-v { color: var(--blue); }
+  .no-p { color: var(--text-3); font-style: italic; font-size: 11px; }
+  .dias-b { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+  .d-s { background:#0f2010; color:#4ade80; }
+  .d-m { background:#1c2010; color:#a3e635; }
+  .d-l { background:#1a1f2e; color:#64748b; }
+  .sp-p { color:var(--green); font-size:11px; }
+  .sp-n { color:var(--red); font-size:11px; }
+
+  .caucion { background: var(--card); border: 0.5px solid var(--border); border-radius: 8px; padding: 14px 18px; display: flex; align-items: center; gap: 32px; margin-bottom: 16px; flex-wrap: wrap; }
+  .cau-item .lbl { font-size: 10px; color: var(--text-3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+  .cau-item .val { font-size: 15px; font-weight: 500; font-family: var(--mono); color: var(--amber); }
+  .cau-note { margin-left: auto; font-size: 10px; color: var(--text-3); font-family: var(--mono); text-align: right; }
+
+  .footer { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 0.5px solid var(--border); }
+  .foot-note { font-size: 10px; color: var(--text-3); font-family: var(--mono); }
+
+  .alert { padding: 10px 14px; border-radius: 6px; font-size: 11px; font-family: var(--mono); margin-bottom: 14px; display: none; }
+  .alert.show { display: block; }
+  .alert.err { background:#1a0a0a; border:0.5px solid #3a1a1a; color:var(--red); }
+  .alert.info { background:#0a1a0a; border:0.5px solid #1a3a1a; color:var(--green); }
+
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .stats { grid-template-columns: repeat(2,1fr); }
+    .caucion { gap: 16px; }
+    .cau-note { display: none; }
+    .precio-grid { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Monitor LECAPs</h1>
+      <div class="status-line">
+        <span class="dot loading" id="dot"></span>
+        <span id="status-txt">Cargando lecaps.xlsx...</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="badge">T+2 · ARS · Pesos</div>
+    </div>
+  </div>
+
+  <div class="alert" id="alert"></div>
+
+  <div class="panel">
+    <div class="panel-header" onclick="togglePanel()">
+      <div class="panel-title">
+        Precios de mercado
+        <span id="precios-badge" style="color:var(--green);font-size:10px;"></span>
+      </div>
+      <span class="panel-arrow open" id="panel-arrow">▼</span>
+    </div>
+    <div class="panel-body open" id="panel-body">
+
+      <div class="upload-row">
+        <label class="upload-label" for="balanz-input">
+          📋 Cargar Excel de Balanz
+        </label>
+        <input type="file" id="balanz-input" accept=".xlsx,.xls" onchange="cargarBalanz(this)">
+        <span class="upload-st" id="balanz-st">Pegá la tabla de Balanz en Excel y subila acá</span>
+        <div class="sep-v"></div>
+        <label class="upload-label" for="xlsx-input">
+          📊 Actualizar datos base
+        </label>
+        <input type="file" id="xlsx-input" accept=".xlsx,.xls" onchange="cargarExcelManual(this)">
+        <span class="upload-st" id="xlsx-st">Leyendo desde GitHub...</span>
+      </div>
+
+      <div class="precio-grid" id="precio-grid">
+        <div style="color:var(--text-3);font-size:12px;font-family:var(--mono);">Cargando instrumentos...</div>
+      </div>
+
+      <div class="panel-actions">
+        <button class="btn btn-green" onclick="aplicarPrecios()">✓ Aplicar precios</button>
+        <button class="btn btn-ghost" onclick="limpiarPrecios()">Limpiar</button>
+        <span class="panel-hint">Podés editar cualquier precio antes de aplicar</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="stat-label">TIR Máxima</div><div class="stat-value" style="color:var(--text-3)">—</div><div class="stat-sub">Cargá precios</div></div>
+    <div class="stat"><div class="stat-label">TIR Mínima</div><div class="stat-value" style="color:var(--text-3)">—</div></div>
+    <div class="stat"><div class="stat-label">TIR Promedio</div><div class="stat-value" style="color:var(--text-3)">—</div></div>
+    <div class="stat"><div class="stat-label">Instrumentos</div><div class="stat-value" style="color:var(--text-3)">—</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('ticker')" id="th-ticker">Ticker</th>
+          <th onclick="sortBy('tipo')" id="th-tipo">Tipo</th>
+          <th onclick="sortBy('venc')" id="th-venc">Vencimiento</th>
+          <th onclick="sortBy('dias')" id="th-dias">Días</th>
+          <th onclick="sortBy('vpv')" id="th-vpv">VPV</th>
+          <th onclick="sortBy('precio')" id="th-precio">Precio Mercado</th>
+          <th onclick="sortBy('tir_ef')" id="th-tir_ef" class="sorted">TIR Ef. % ▼</th>
+          <th onclick="sortBy('tna')" id="th-tna">TNA %</th>
+          <th onclick="sortBy('spread')" id="th-spread">vs Caución</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="caucion">
+    <div class="cau-item">
+      <div class="lbl">Caución capitalizada (ref.)</div>
+      <div class="val" id="cau-cap">—</div>
+      <div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">30 días</div>
+    </div>
+    <div class="cau-item">
+      <div class="lbl">TNA Caución 1d</div>
+      <div class="val" id="cau-1d" style="color:var(--blue)">—</div>
+    </div>
+    <div class="cau-item">
+      <div class="lbl">TNA Caución 7d</div>
+      <div class="val" id="cau-7d" style="color:var(--blue)">—</div>
+    </div>
+    <div class="cau-note">Caución: estimación manual<br>Datos base: lecaps.xlsx · GitHub</div>
+  </div>
+
+  <div class="footer">
+    <div class="foot-note">(*) TIR calculada sobre VPV oficial (base 30/360). Precios: Excel de Balanz.</div>
+    <div class="foot-note" id="foot-r"></div>
+  </div>
+
+</div>
+
+<script>
+const EXCEL_URL = 'lecaps.xlsx';
+const CAUCION_1D = 36.5;
+const CAUCION_7D = 37.2;
+
+let lecaps = [];
+let precios = {};
+let sortCol = 'tir_ef';
+let sortAsc = false;
+
+// ── HELPERS ──────────────────────────────────────────────────
+function diasAlVenc(f) {
+  if (!f) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return Math.round((new Date(f) - hoy) / 86400000);
+}
+function tirEf(vpv, precio, dias) {
+  if (!vpv || !precio || !dias || dias <= 0) return null;
+  return (Math.pow(vpv / precio, 365 / dias) - 1) * 100;
+}
+function temToTna(tem) {
+  if (!tem) return null;
+  return (Math.pow(1 + tem / 100, 12) - 1) * 100;
+}
+function caucionCap(tna, dias) {
+  return (Math.pow(1 + tna / 100 / 365, dias) - 1) * 100;
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { const d = new Date(s); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`; }
+  catch { return s; }
+}
+function diasClass(d) { return d<=90?'d-s':d<=180?'d-m':'d-l'; }
+function setStatus(e,t) { document.getElementById('dot').className='dot '+e; document.getElementById('status-txt').textContent=t; }
+function showAlert(msg, tipo='err') {
+  const el = document.getElementById('alert');
+  el.textContent=msg; el.className='alert show '+tipo;
+  setTimeout(()=>el.className='alert', 5000);
+}
+
+// ── PANEL ────────────────────────────────────────────────────
+function togglePanel() {
+  const body = document.getElementById('panel-body');
+  const arrow = document.getElementById('panel-arrow');
+  const open = body.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+}
+
+// ── EXCEL BASE DESDE GITHUB ──────────────────────────────────
+async function cargarExcelGitHub() {
+  setStatus('loading', 'Leyendo lecaps.xlsx...');
+  try {
+    const resp = await fetch(EXCEL_URL + '?t=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    parsearExcelBase(await resp.arrayBuffer());
+    document.getElementById('xlsx-st').textContent = '✓ Cargado desde GitHub';
+    document.getElementById('xlsx-st').className = 'upload-st ok';
+  } catch(e) {
+    setStatus('err', 'Error: ' + e.message);
+    document.getElementById('xlsx-st').textContent = 'Error: ' + e.message;
+    document.getElementById('xlsx-st').className = 'upload-st err';
+    showAlert('No se pudo cargar el Excel base: ' + e.message);
+  }
+}
+
+function cargarExcelManual(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    parsearExcelBase(e.target.result);
+    document.getElementById('xlsx-st').textContent = '✓ ' + file.name;
+    document.getElementById('xlsx-st').className = 'upload-st ok';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parsearExcelBase(buffer) {
+  try {
+    const wb = XLSX.read(buffer, { type:'array', cellDates:true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+    lecaps = rows
+      .filter(r => r['Ticker'] && String(r['Ticker']).trim())
+      .map(r => {
+        const toDate = v => v instanceof Date ? v.toISOString().split('T')[0] : String(v||'').trim();
+        return {
+          ticker: String(r['Ticker']).trim(),
+          tipo:   String(r['Tipo']||'LECAP').trim(),
+          emision: toDate(r['Fecha Emision']),
+          venc:    toDate(r['Fecha Vencimiento']),
+          tem:     parseFloat(r['TEM (%)']) || null,
+          vpv:     parseFloat(r['VPV (c/100 VN)']) || null,
+        };
+      });
+    construirFormulario();
+    renderTodo();
+    const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    setStatus('ok', `Datos cargados · ${hora} · ${lecaps.length} instrumentos`);
+  } catch(e) {
+    setStatus('err', 'Error parseando Excel base');
+    showAlert('Error al leer el Excel: ' + e.message);
+  }
+}
+
+// ── CARGAR EXCEL DE BALANZ ───────────────────────────────────
+function cargarBalanz(input) {
+  const file = input.files[0]; if (!file) return;
+  const stEl = document.getElementById('balanz-st');
+  stEl.textContent = 'Leyendo...';
+  stEl.className = 'upload-st loading';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type:'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+
+      const preciosExtraidos = {};
+      const tickersEnBase = lecaps.map(l => l.ticker);
+
+      // Estructura Balanz:
+      // Fila par  (0,4,8...): col 1 = "S30A6LETRA TESORO...", col 9 = "555555 × 1,2651" (BID)
+      // Fila par+2 (2,6,10...): col 9 = "1,272 × 250000" (ASK) ← este queremos
+
+      let tickerActual = null;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+
+        // Col 1 tiene el ticker pegado a la descripcion
+        const celda = String(row[1] || '').trim();
+
+        if (celda) {
+          // Es una fila de instrumento — extraer ticker
+          tickerActual = null;
+          for (const ticker of tickersEnBase) {
+            if (celda.startsWith(ticker)) { tickerActual = ticker; break; }
+          }
+          if (!tickerActual) {
+            const match = celda.match(/^([A-Z][A-Z0-9]{3,5})/);
+            if (match && tickersEnBase.includes(match[1])) tickerActual = match[1];
+          }
+        } else if (tickerActual) {
+          // Es la fila del ASK — col 9 tiene "1,272 × 250000"
+          const askCelda = String(row[9] || '').trim();
+          if (askCelda) {
+            // Extraer el primer número antes del ×
+            const match = askCelda.replace(/\u00a0/g, ' ').match(/^([\d,\.]+)\s*×/);
+            if (match) {
+              let precio = parseFloat(match[1].replace(',', '.'));
+              if (!isNaN(precio) && precio > 0) {
+                if (precio < 10) precio = precio * 100; // normalizar a base 100 VN
+                preciosExtraidos[tickerActual] = precio;
+              }
+            }
+            tickerActual = null; // resetear para el siguiente instrumento
+          }
+        }
+      }
+
+      const count = Object.keys(preciosExtraidos).length;
+      if (count === 0) {
+        stEl.textContent = 'No se encontraron precios ASK';
+        stEl.className = 'upload-st err';
+        showAlert('No se pudieron extraer precios ASK del Excel de Balanz. Verificá el formato.');
+        return;
+      }
+
+      // Cargar en los inputs del formulario
+      for (const [ticker, precio] of Object.entries(preciosExtraidos)) {
+        const inp = document.getElementById('p-' + ticker);
+        if (inp) {
+          inp.value = (precio / 100).toFixed(5);
+          inp.classList.add('filled');
+        }
+      }
+
+      stEl.textContent = `✓ ${count} precios ASK cargados desde Balanz`;
+      stEl.className = 'upload-st ok';
+      document.getElementById('precios-badge').textContent = `· ${count} precios listos`;
+      showAlert(`✓ ${count} precios ASK cargados. Revisalos y apretá "Aplicar precios".`, 'info');
+
+    } catch(err) {
+      stEl.textContent = 'Error al leer el Excel';
+      stEl.className = 'upload-st err';
+      showAlert('Error procesando el Excel de Balanz: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── FORMULARIO ───────────────────────────────────────────────
+function construirFormulario() {
+  document.getElementById('precio-grid').innerHTML = lecaps.map(l => `
+    <div class="precio-item">
+      <div class="precio-label">
+        <span>${l.ticker}</span>
+        <span class="precio-venc">${fmtDate(l.venc)}</span>
+      </div>
+      <input
+        class="precio-input"
+        id="p-${l.ticker}"
+        type="number"
+        step="0.00001"
+        placeholder="ej: 1.2688"
+        oninput="this.classList.toggle('filled', this.value !== '')"
+      >
+    </div>
+  `).join('');
+}
+
+function aplicarPrecios() {
+  precios = {};
+  let count = 0;
+  for (const l of lecaps) {
+    const el = document.getElementById('p-' + l.ticker);
+    if (!el || !el.value) continue;
+    let p = parseFloat(el.value);
+    if (isNaN(p) || p <= 0) continue;
+    if (p < 10) p = p * 100; // normalizar a base 100 VN
+    precios[l.ticker] = p;
+    count++;
+  }
+  document.getElementById('precios-badge').textContent = count > 0 ? `· ${count} aplicados` : '';
+  renderTodo();
+  if (count > 0) showAlert(`✓ ${count} precios aplicados — TIRs actualizadas`, 'info');
+  else showAlert('No se ingresó ningún precio válido');
+}
+
+function limpiarPrecios() {
+  precios = {};
+  for (const l of lecaps) {
+    const el = document.getElementById('p-' + l.ticker);
+    if (el) { el.value = ''; el.classList.remove('filled'); }
+  }
+  document.getElementById('precios-badge').textContent = '';
+  document.getElementById('balanz-st').textContent = 'Pegá la tabla de Balanz en Excel y subila acá';
+  document.getElementById('balanz-st').className = 'upload-st';
+  renderTodo();
+}
+
+// ── SORT ─────────────────────────────────────────────────────
+function sortBy(col) {
+  sortAsc = sortCol===col ? !sortAsc : (col==='ticker'||col==='venc'||col==='tipo');
+  sortCol = col;
+  renderTabla();
+}
+
+// ── ENRIQUECER ───────────────────────────────────────────────
+function enriquecer() {
+  return lecaps.map(l => {
+    const dias = diasAlVenc(l.venc);
+    const precio = precios[l.ticker] || null;
+    const tir_ef = tirEf(l.vpv, precio, dias);
+    const tna = temToTna(l.tem);
+    const cau = dias ? caucionCap(CAUCION_1D, dias) : null;
+    const spread = tir_ef!==null && cau!==null ? tir_ef-cau : null;
+    return { ...l, dias, precio, tir_ef, tna, caucion:cau, spread };
+  });
+}
+
+// ── RENDER TABLA ─────────────────────────────────────────────
+function renderTabla() {
+  const data = enriquecer().sort((a,b) => {
+    let va=a[sortCol], vb=b[sortCol];
+    if (va===null||va===undefined) return 1;
+    if (vb===null||vb===undefined) return -1;
+    if (typeof va==='string') return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    return sortAsc?va-vb:vb-va;
+  });
+
+  document.querySelectorAll('th').forEach(th => {
+    th.classList.remove('sorted');
+    th.textContent = th.textContent.replace(/\s*[▲▼]/,'');
+  });
+  const thEl = document.getElementById('th-'+sortCol);
+  if (thEl) { thEl.classList.add('sorted'); thEl.textContent+=' '+(sortAsc?'▲':'▼'); }
+
+  document.getElementById('tbody').innerHTML = data.map(d => {
+    const tipoBadge = d.tipo==='BONCAP'
+      ? `<span style="background:#1a1200;color:#fbbf24;padding:2px 7px;border-radius:4px;font-size:10px;">BONCAP</span>`
+      : `<span style="background:#0f2010;color:#4ade80;padding:2px 7px;border-radius:4px;font-size:10px;">LECAP</span>`;
+    const tirCell = d.tir_ef!==null
+      ? `<span class="tir">${d.tir_ef.toFixed(2)}%</span>`
+      : `<span class="no-p">sin precio</span>`;
+    const precioCell = d.precio!==null
+      ? (d.precio/100).toFixed(5)
+      : `<span class="no-p">—</span>`;
+    const spreadCell = d.spread!==null
+      ? `<span class="${d.spread>=0?'sp-p':'sp-n'}">${d.spread>=0?'+':''}${d.spread.toFixed(1)}%</span>`
+      : `<span class="no-p">—</span>`;
+
+    return `<tr>
+      <td>${d.ticker}</td>
+      <td>${tipoBadge}</td>
+      <td>${fmtDate(d.venc)}</td>
+      <td>${d.dias!==null?`<span class="dias-b ${diasClass(d.dias)}">${d.dias}d</span>`:'—'}</td>
+      <td style="color:var(--text-2)">${d.vpv?d.vpv.toFixed(4):'—'}</td>
+      <td>${precioCell}</td>
+      <td>${tirCell}</td>
+      <td class="tna-v">${d.tna?d.tna.toFixed(2)+'%':'—'}</td>
+      <td>${spreadCell}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('foot-r').textContent = `${data.length} instrumentos · orden: ${sortCol.replace('_',' ')}`;
+}
+
+// ── RENDER STATS ─────────────────────────────────────────────
+function renderStats() {
+  const data = enriquecer();
+  const conTir = data.filter(d=>d.tir_ef!==null);
+  const nL = data.filter(d=>d.tipo==='LECAP').length;
+  const nB = data.filter(d=>d.tipo==='BONCAP').length;
+
+  if (!conTir.length) {
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">TIR Máxima</div><div class="stat-value" style="color:var(--text-3)">—</div><div class="stat-sub">Cargá precios de Balanz</div></div>
+      <div class="stat"><div class="stat-label">TIR Mínima</div><div class="stat-value" style="color:var(--text-3)">—</div></div>
+      <div class="stat"><div class="stat-label">TIR Promedio</div><div class="stat-value" style="color:var(--text-3)">—</div></div>
+      <div class="stat"><div class="stat-label">Instrumentos</div><div class="stat-value">${data.length}</div><div class="stat-sub">${nL} LECAP · ${nB} BONCAP</div></div>
+    `;
+    return;
+  }
+
+  const tirs = conTir.map(d=>d.tir_ef);
+  const max = Math.max(...tirs), min = Math.min(...tirs);
+  const avg = tirs.reduce((a,b)=>a+b,0)/tirs.length;
+  const spreads = conTir.filter(d=>d.spread!==null).map(d=>d.spread);
+  const avgSp = spreads.length ? spreads.reduce((a,b)=>a+b,0)/spreads.length : null;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="stat-label">TIR Máxima</div><div class="stat-value" style="color:var(--green)">${max.toFixed(2)}%</div><div class="stat-sub">${conTir.find(d=>d.tir_ef===max)?.ticker}</div></div>
+    <div class="stat"><div class="stat-label">TIR Mínima</div><div class="stat-value" style="color:var(--text-2)">${min.toFixed(2)}%</div><div class="stat-sub">${conTir.find(d=>d.tir_ef===min)?.ticker}</div></div>
+    <div class="stat"><div class="stat-label">TIR Promedio</div><div class="stat-value">${avg.toFixed(2)}%</div><div class="stat-sub">${conTir.length} con precio</div></div>
+    <div class="stat"><div class="stat-label">Spread vs Caución</div><div class="stat-value" style="color:var(--amber)">${avgSp!==null?(avgSp>=0?'+':'')+avgSp.toFixed(1)+'%':'—'}</div><div class="stat-sub">TNA caución ${CAUCION_1D}%</div></div>
+  `;
+}
+
+function renderCaucion() {
+  document.getElementById('cau-cap').textContent = caucionCap(CAUCION_1D,30).toFixed(3)+'%';
+  document.getElementById('cau-1d').textContent = CAUCION_1D+'% TNA';
+  document.getElementById('cau-7d').textContent = CAUCION_7D+'% TNA';
+}
+
+function renderTodo() { renderTabla(); renderStats(); renderCaucion(); }
+
+cargarExcelGitHub();
+</script>
+</body>
+</html>
