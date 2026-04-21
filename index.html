@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor LECAPs</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base: #0b0e16;
+    --bg-surface: #0f1320;
+    --bg-card: #141929;
+    --bg-row-hover: #161c2e;
+    --border: #1e2540;
+    --border-light: #252d45;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    --green: #4ade80;
+    --green-dim: #86efac;
+    --green-bg: #0f2010;
+    --green-border: #1a3a1a;
+    --blue: #7dd3fc;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    --font-sans: 'Inter', system-ui, sans-serif;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 0.5px solid var(--border);
+  }
+
+  .header-left h1 {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .header-left .subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .badge {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 5px;
+    border: 0.5px solid var(--border);
+  }
+
+  .btn-refresh {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--green);
+    background: var(--green-bg);
+    border: 0.5px solid var(--green-border);
+    border-radius: 5px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-refresh:hover { background: #162a16; }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .status-dot.live { background: var(--green); animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .table-container {
+    background: var(--bg-surface);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead tr {
+    border-bottom: 0.5px solid var(--border);
+  }
+
+  th {
+    padding: 10px 14px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: right;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-card);
+    transition: color 0.15s;
+  }
+
+  th:hover { color: var(--text-secondary); }
+  th:first-child, th:nth-child(2) { text-align: left; }
+  th.sorted { color: var(--green); }
+
+  tbody tr {
+    border-bottom: 0.5px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-row-hover); }
+
+  td {
+    padding: 10px 14px;
+    font-size: 12px;
+    text-align: right;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+
+  td:first-child {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.04em;
+  }
+
+  td:nth-child(2) {
+    text-align: left;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .tir-ef {
+    color: var(--green);
+    font-weight: 500;
+  }
+
+  .tna-val { color: var(--blue); }
+
+  .dias-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+  }
+
+  .dias-short { background: #0f2010; color: #4ade80; }
+  .dias-mid   { background: #1c2010; color: #a3e635; }
+  .dias-long  { background: #1a1f2e; color: #64748b; }
+
+  .spread-pos { color: var(--green); font-size: 11px; }
+  .spread-neg { color: var(--red); font-size: 11px; }
+
+  .caucion-bar {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .caucion-item .label {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .caucion-item .value {
+    font-size: 15px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--amber);
+  }
+
+  .caucion-item .sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .caucion-note {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    text-align: right;
+  }
+
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .footer-note {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .api-status {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .caucion-bar { gap: 16px; }
+    .caucion-note { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Monitor LECAPs</h1>
+      <div class="subtitle" id="upd-time"><span class="status-dot"></span>Datos de ejemplo · pendiente conexión BYMA Open Data</div>
+    </div>
+    <div class="header-right">
+      <div class="badge">T+2 · ARS · Pesos</div>
+      <button class="btn-refresh" onclick="renderAll()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('ticker')" id="th-ticker">Ticker</th>
+          <th onclick="sortBy('venc')" id="th-venc">Vencimiento</th>
+          <th onclick="sortBy('dias')" id="th-dias">Días</th>
+          <th onclick="sortBy('precio')" id="th-precio">Precio</th>
+          <th onclick="sortBy('tir_ef')" id="th-tir_ef" class="sorted">TIR Ef. %</th>
+          <th onclick="sortBy('tna')" id="th-tna">TNA %</th>
+          <th onclick="sortBy('tir_30d')" id="th-tir_30d">TIR 30d %</th>
+          <th onclick="sortBy('vol')" id="th-vol">Vol. (M)</th>
+          <th onclick="sortBy('spread')" id="th-spread">vs Caución</th>
+        </tr>
+      </thead>
+      <tbody id="lecap-body"></tbody>
+    </table>
+  </div>
+
+  <div class="caucion-bar">
+    <div class="caucion-item">
+      <div class="label">Caución capitalizada (ref.)</div>
+      <div class="value" id="cau-cap">—</div>
+      <div class="sub">capitalizado a 30 días</div>
+    </div>
+    <div class="caucion-item">
+      <div class="label">TNA Caución 1d</div>
+      <div class="value" id="cau-1d" style="color: var(--blue)">—</div>
+    </div>
+    <div class="caucion-item">
+      <div class="label">TNA Caución 7d</div>
+      <div class="value" id="cau-7d" style="color: var(--blue)">—</div>
+    </div>
+    <div class="caucion-note">Fuente: estimación manual<br>pendiente conexión API</div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-note" id="footer-left">(*) Datos de ejemplo para validación. Sujeto a revisión.</div>
+    <div class="api-status" id="footer-right"></div>
+  </div>
+
+</div>
+
+<script>
+const LECAPS = [
+  { ticker:'S30A5', venc:'2025-04-30', precio:100.25, tna:37.5, vol:4120 },
+  { ticker:'S16Y5', venc:'2025-05-16', precio:100.80, tna:38.2, vol:2870 },
+  { ticker:'S30Y5', venc:'2025-05-30', precio:101.10, tna:38.8, vol:3540 },
+  { ticker:'S13J5', venc:'2025-06-13', precio:101.55, tna:39.1, vol:1980 },
+  { ticker:'S27J5', venc:'2025-06-27', precio:101.90, tna:39.5, vol:2240 },
+  { ticker:'S11L5', venc:'2025-07-11', precio:102.30, tna:40.0, vol:1650 },
+  { ticker:'S25L5', venc:'2025-07-25', precio:102.70, tna:40.3, vol:1420 },
+  { ticker:'S15G5', venc:'2025-08-15', precio:103.20, tna:40.7, vol:980  },
+  { ticker:'S12S5', venc:'2025-09-12', precio:104.10, tna:41.2, vol:870  },
+  { ticker:'S10O5', venc:'2025-10-10', precio:105.20, tna:41.8, vol:640  },
+  { ticker:'S14N5', venc:'2025-11-14', precio:106.50, tna:42.3, vol:510  },
+  { ticker:'S12D5', venc:'2025-12-12', precio:108.00, tna:42.9, vol:430  },
+];
+
+const CAUCION_1D = 36.5;
+const CAUCION_7D = 37.2;
+const HOY = new Date();
+
+function dias(fechaStr) {
+  return Math.round((new Date(fechaStr) - HOY) / 86400000);
+}
+
+function tirEf(precio, d) {
+  return (Math.pow(100 / precio, 365 / d) - 1) * 100;
+}
+
+function tir30(precio, d) {
+  return (Math.pow(100 / precio, 30 / d) - 1) * 100;
+}
+
+function caucionCap(tna, d) {
+  return (Math.pow(1 + tna / 100 / 365, d) - 1) * 100;
+}
+
+function enrich() {
+  return LECAPS.map(d => {
+    const dv = dias(d.venc);
+    const tir_ef = tirEf(d.precio, dv);
+    const tir_30d = tir30(d.precio, dv);
+    const cau = caucionCap(CAUCION_1D, dv);
+    return { ...d, dias: dv, tir_ef, tir_30d, caucion: cau, spread: tir_ef - cau };
+  });
+}
+
+let sortCol = 'tir_ef';
+let sortAsc = false;
+
+function sortBy(col) {
+  sortAsc = sortCol === col ? !sortAsc : (col === 'ticker' || col === 'venc');
+  sortCol = col;
+  renderAll();
+}
+
+function fmtDate(s) {
+  const [y, m, d] = s.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function diasClass(d) {
+  if (d <= 60) return 'dias-short';
+  if (d <= 120) return 'dias-mid';
+  return 'dias-long';
+}
+
+function renderAll() {
+  const data = enrich();
+  data.sort((a, b) => {
+    const va = a[sortCol], vb = b[sortCol];
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va - vb : vb - va;
+  });
+
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sorted'));
+  const thEl = document.getElementById('th-' + sortCol);
+  if (thEl) { thEl.classList.add('sorted'); thEl.textContent = thEl.textContent.replace(/[▲▼]/g,'').trim() + ' ' + (sortAsc ? '▲' : '▼'); }
+
+  document.getElementById('lecap-body').innerHTML = data.map(d => {
+    const sp = d.spread >= 0;
+    return `<tr>
+      <td>${d.ticker}</td>
+      <td>${fmtDate(d.venc)}</td>
+      <td><span class="dias-badge ${diasClass(d.dias)}">${d.dias}d</span></td>
+      <td>${d.precio.toFixed(2)}</td>
+      <td class="tir-ef">${d.tir_ef.toFixed(2)}%</td>
+      <td class="tna-val">${d.tna.toFixed(1)}%</td>
+      <td class="tna-val">${d.tir_30d.toFixed(2)}%</td>
+      <td>${(d.vol/1000).toFixed(1)}</td>
+      <td class="${sp ? 'spread-pos' : 'spread-neg'}">${sp?'+':''}${d.spread.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  const tirs = data.map(d => d.tir_ef);
+  const max = Math.max(...tirs), min = Math.min(...tirs);
+  const avg = tirs.reduce((a,b)=>a+b,0)/tirs.length;
+  const avgSpread = data.reduce((a,d)=>a+d.spread,0)/data.length;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">TIR Máxima</div>
+      <div class="stat-value" style="color:var(--green)">${max.toFixed(2)}%</div>
+      <div class="stat-sub">${data.find(d=>d.tir_ef===max)?.ticker}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">TIR Mínima</div>
+      <div class="stat-value" style="color:var(--text-secondary)">${min.toFixed(2)}%</div>
+      <div class="stat-sub">${data.find(d=>d.tir_ef===min)?.ticker}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">TIR Promedio</div>
+      <div class="stat-value">${avg.toFixed(2)}%</div>
+      <div class="stat-sub">${data.length} instrumentos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Spread prom. vs Caución</div>
+      <div class="stat-value" style="color:var(--amber)">${avgSpread>=0?'+':''}${avgSpread.toFixed(1)}%</div>
+      <div class="stat-sub">TNA caución ${CAUCION_1D}%</div>
+    </div>
+  `;
+
+  document.getElementById('cau-cap').textContent = caucionCap(CAUCION_1D, 30).toFixed(3) + '%';
+  document.getElementById('cau-1d').textContent = CAUCION_1D + '% TNA';
+  document.getElementById('cau-7d').textContent = CAUCION_7D + '% TNA';
+  document.getElementById('footer-right').textContent = `${data.length} instrumentos · ordenado por ${sortCol.replace('_',' ')}`;
+}
+
+renderAll();
+</script>
+</body>
+</html>
