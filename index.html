@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor LECAPs</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --card: #f8fafc;
+    --row-hover: #eef2f7;
+    --border: #d1d9e0;
+    --border-l: #b8c4cf;
+    --text: #1a2332;
+    --text-2: #3a4a5c;
+    --text-3: #7a8fa0;
+    --green: #16a34a;
+    --green-bg: #dcfce7;
+    --green-border: #86efac;
+    --blue: #1d6fa5;
+    --amber: #b45309;
+    --red: #dc2626;
+    --mono: 'JetBrains Mono','Fira Code','Courier New',monospace;
+    --sans: 'Inter',system-ui,sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  /* HEADER */
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); gap: 16px; flex-wrap: wrap; }
+  .header-left h1 { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--text-3); text-transform: uppercase; margin-bottom: 4px; }
+  .status-line { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot.ok { background: var(--green); animation: pulse 2s infinite; }
+  .dot.err { background: var(--red); }
+  .dot.loading { background: var(--amber); animation: pulse 1s infinite; }
+  .dot.idle { background: var(--text-3); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* TOOLBAR */
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .upload-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); font-family: var(--mono); cursor: pointer; background: var(--surface); border: 1px solid var(--border-l); border-radius: 5px; padding: 7px 14px; transition: border-color .15s, color .15s; }
+  .upload-label:hover { border-color: var(--blue); color: var(--blue); }
+  input[type=file] { display: none; }
+  .upload-st { font-size: 11px; font-family: var(--mono); color: var(--text-3); }
+  .upload-st.ok { color: var(--green); }
+  .upload-st.err { color: var(--red); }
+  .upload-st.loading { color: var(--amber); }
+  .sep-v { width: 1px; height: 20px; background: var(--border); }
+  .btn { font-size: 11px; font-family: var(--mono); border-radius: 5px; padding: 7px 14px; cursor: pointer; border: 1px solid; transition: background .15s; white-space: nowrap; }
+  .btn-ghost { color: var(--text-3); background: var(--surface); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--row-hover); color: var(--text-2); }
+  .btn-green { color: #ffffff; background: var(--green); border-color: var(--green); }
+  .btn-green:hover { background: #15803d; }
+  .btn-green:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* CAUCION */
+  .caucion { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .caucion-header { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; background: var(--card); }
+  .caucion-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-family: var(--mono); font-weight: 600; }
+  .caucion-body { padding: 16px 18px; display: none; background: var(--surface); }
+  .caucion-body.open { display: block; }
+  .caucion-arrow { font-size: 10px; color: var(--text-3); transition: transform .2s; }
+  .caucion-arrow.open { transform: rotate(180deg); }
+  .caucion-row { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; }
+  .caucion-input-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .caucion-lbl { font-size: 10px; color: var(--text-3); font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .caucion-input { background: var(--bg); border: 1px solid var(--border-l); border-radius: 5px; color: var(--amber); font-family: var(--mono); font-size: 14px; font-weight: 500; padding: 7px 12px; width: 120px; transition: border-color .15s; }
+  .caucion-input:focus { outline: none; border-color: var(--amber); }
+  .caucion-results { display: flex; gap: 32px; flex-wrap: wrap; }
+  .caucion-stat { display: flex; flex-direction: column; gap: 3px; }
+  .caucion-stat .lbl { font-size: 10px; color: var(--text-3); font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .caucion-stat .val { font-size: 15px; font-weight: 500; font-family: var(--mono); color: var(--blue); }
+
+  /* TABLA */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; overflow-x: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th { padding: 10px 14px; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); text-align: right; white-space: nowrap; cursor: pointer; background: var(--card); transition: color .15s; user-select: none; }
+  th:hover { color: var(--text-2); }
+  th:first-child, th:nth-child(2) { text-align: left; }
+  th.sorted { color: var(--green); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+  td { padding: 8px 14px; font-size: 12px; text-align: right; color: var(--text-2); white-space: nowrap; font-family: var(--mono); vertical-align: middle; }
+  td:first-child { text-align: left; font-weight: 600; color: var(--text); }
+  td:nth-child(2) { text-align: left; }
+  .tir { color: var(--green); font-weight: 600; }
+  .tna-v { color: var(--blue); font-weight: 500; }
+  .no-p { color: var(--text-3); font-style: italic; font-size: 11px; }
+  .dias-normal { color: var(--text-2); }
+  .dias-red { color: var(--red); font-weight: 600; }
+  .sp-p { color: var(--green); font-size: 11px; font-weight: 600; }
+  .sp-n { color: var(--red); font-size: 11px; font-weight: 600; }
+  .tnabe-v { color: var(--amber); font-weight: 500; }
+
+  /* INPUT EN TABLA */
+  .precio-cell-input {
+    background: var(--bg);
+    border: 1px solid var(--border-l);
+    border-radius: 4px;
+    color: var(--text-2);
+    font-family: var(--mono);
+    font-size: 12px;
+    text-align: right;
+    width: 100px;
+    padding: 3px 6px;
+    transition: border-color .15s, color .15s;
+  }
+  .precio-cell-input:focus {
+    outline: none;
+    border-color: var(--blue);
+    color: var(--text);
+  }
+  .precio-cell-input.has-value {
+    color: var(--green);
+    border-color: var(--green-border);
+    background: var(--green-bg);
+  }
+  .precio-cell-input::placeholder { color: var(--text-3); font-size: 11px; }
+
+  /* FOOTER */
+  .footer { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid var(--border); }
+  .foot-note { font-size: 10px; color: var(--text-3); font-family: var(--mono); }
+
+  /* ALERT */
+  .alert { padding: 10px 14px; border-radius: 6px; font-size: 11px; font-family: var(--mono); margin-bottom: 14px; display: none; }
+  .alert.show { display: block; }
+  .alert.err { background:#fef2f2; border:1px solid #fecaca; color:var(--red); }
+  .alert.info { background:#f0fdf4; border:1px solid #86efac; color:var(--green); }
+
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .caucion-row { gap: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Monitor LECAPs</h1>
+      <div class="status-line">
+        <span class="dot loading" id="dot"></span>
+        <span id="status-txt">Cargando lecaps.xlsx...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert" id="alert"></div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <button class="btn btn-green" onclick="fetchPreciosYahoo()" id="btn-yahoo">↻ Actualizar precios</button>
+    <span class="upload-st" id="yahoo-st"></span>
+    <div class="sep-v"></div>
+    <label class="upload-label" for="xlsx-input">📊 Actualizar datos base</label>
+    <input type="file" id="xlsx-input" accept=".xlsx,.xls" onchange="cargarExcelManual(this)">
+    <span class="upload-st" id="xlsx-st">Leyendo desde GitHub...</span>
+    <div class="sep-v"></div>
+    <button class="btn btn-ghost" onclick="limpiarPrecios()">Limpiar precios</button>
+  </div>
+
+  <!-- CAUCION -->
+  <div class="caucion">
+    <div class="caucion-header" onclick="toggleCaucion()">
+      <div class="caucion-title">Caución de referencia</div>
+      <span class="caucion-arrow open" id="caucion-arrow">▼</span>
+    </div>
+    <div class="caucion-body open" id="caucion-body">
+      <div class="caucion-row">
+        <div class="caucion-input-wrap">
+          <div class="caucion-lbl">TNA Caución 1d (%)</div>
+          <input class="caucion-input" id="caucion-tna-input" type="number" step="0.01" value="36.5" placeholder="ej: 36.5" oninput="recalcCaucion()">
+        </div>
+        <div class="caucion-results">
+          <div class="caucion-stat"><div class="lbl">TNA</div><div class="val" id="cau-tna">—</div></div>
+          <div class="caucion-stat"><div class="lbl">TEA</div><div class="val" id="cau-tea">—</div></div>
+          <div class="caucion-stat"><div class="lbl">TEM (mensual cap.)</div><div class="val" id="cau-tem">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('ticker')" id="th-ticker">Ticker</th>
+          <th onclick="sortBy('tipo')" id="th-tipo">Tipo</th>
+          <th onclick="sortBy('precio')" id="th-precio">Precio ASK</th>
+          <th onclick="sortBy('venc')" id="th-venc">Vencimiento</th>
+          <th onclick="sortBy('dias')" id="th-dias">Días</th>
+          <th onclick="sortBy('vpv')" id="th-vpv">Valor Final</th>
+          <th onclick="sortBy('rend_directo')" id="th-rend_directo" class="sorted">Rend. Directo % ▼</th>
+          <th onclick="sortBy('rend_anual')" id="th-rend_anual">Rend. Directo Anualizado %</th>
+          <th onclick="sortBy('spread')" id="th-spread">Ganancia vs Caución</th>
+          <th onclick="sortBy('tna_be')" id="th-tna_be">TNA BE</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    <div class="foot-note">(*) Valor Final = 100 × (1 + TEM)^t · base 30/360. Precios ASK 24hs.</div>
+    <div class="foot-note" id="foot-r"></div>
+  </div>
+
+</div>
+
+<script>
+const EXCEL_URL = 'lecaps.xlsx';
+const WORKER_URL = 'https://yahoo-proxy.granda-fra.workers.dev';
+let lecaps = [];
+let precios = {};
+let caucionTna = 36.5;
+let sortCol = 'rend_directo';
+let sortAsc = false;
+
+// ── DIAS360 convención US/NASD (igual a Excel) ───────────────
+function dias360(emision, venc) {
+  const e = new Date(emision);
+  const v = new Date(venc);
+  let d1 = e.getDate(), m1 = e.getMonth() + 1, y1 = e.getFullYear();
+  let d2 = v.getDate(), m2 = v.getMonth() + 1, y2 = v.getFullYear();
+  // Regla US NASD: si d1=31 → d1=30; si d2=31 y d1>=30 → d2=30
+  if (d1 === 31) d1 = 30;
+  if (d2 === 31 && d1 >= 30) d2 = 30;
+  return (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1);
+}
+
+// ── VPV (fórmula oficial Secretaría de Finanzas) ─────────────
+function calcularVPV(emision, venc, tem) {
+  if (!emision || !venc || !tem) return null;
+  try {
+    const diasBase = dias360(emision, venc);
+    const t = diasBase / 30;
+    return 100 * Math.pow(1 + tem / 100, t);
+  } catch { return null; }
+}
+
+// ── HELPERS ──────────────────────────────────────────────────
+
+function rendimientoDirecto(vpv, precio) {
+  // (Valor Final - Precio) / Precio
+  if (!vpv || !precio || precio <= 0) return null;
+  return (vpv - precio) / precio * 100;
+}
+
+function rendimientoDirectoAnualizado(rend, dias) {
+  // (365 / dias) * Rendimiento Directo
+  if (rend === null || !dias || dias <= 0) return null;
+  return (365 / dias) * rend;
+}
+
+function gananciaCaucion(vpv, precio, caucionTna, dias) {
+  // Valor Final - (Precio * (1 + (Caucion/365))^(Dias-2))
+  if (!vpv || !precio || !caucionTna || dias === null || dias <= 0) return null;
+  const factorCaucion = Math.pow(1 + caucionTna / 100 / 365, dias - 2);
+  return vpv - precio * factorCaucion;
+}
+
+function calcTnaBE(precio, vpv, dias) {
+  // Despejar Caucion de: VF - Precio*(1+(C/365))^(dias-2) = 0
+  // => Precio*(1+(C/365))^(dias-2) = VF
+  // => (1+(C/365))^(dias-2) = VF/Precio
+  // => 1+(C/365) = (VF/Precio)^(1/(dias-2))
+  // => C = ((VF/Precio)^(1/(dias-2)) - 1) * 365
+  if (!vpv || !precio || precio <= 0 || dias === null || dias <= 2) return null;
+  return (Math.pow(vpv / precio, 1 / (dias - 2)) - 1) * 365 * 100;
+}
+
+function temToTna(tem) {
+  if (!tem) return null;
+  return (Math.pow(1 + tem / 100, 12) - 1) * 100;
+}
+
+function parseLocalDate(s) {
+  if (!s) return null;
+  const parts = s.split('-').map(Number);
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+function diasAlVenc(f) {
+  if (!f) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const venc = parseLocalDate(f);
+  if (!venc) return null;
+  return Math.round((venc - hoy) / 86400000);
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    const d = parseLocalDate(s);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`;
+  } catch { return s; }
+}
+function setStatus(e,t) { document.getElementById('dot').className='dot '+e; document.getElementById('status-txt').textContent=t; }
+function showAlert(msg, tipo='err') {
+  const el = document.getElementById('alert');
+  el.textContent=msg; el.className='alert show '+tipo;
+  setTimeout(()=>el.className='alert', 5000);
+}
+
+// ── CAUCION ───────────────────────────────────────────────────
+function toggleCaucion() {
+  const body = document.getElementById('caucion-body');
+  const arrow = document.getElementById('caucion-arrow');
+  const open = body.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+}
+
+function recalcCaucion() {
+  caucionTna = parseFloat(document.getElementById('caucion-tna-input').value) || 0;
+  if (!caucionTna) {
+    ['cau-tna','cau-tea','cau-tem'].forEach(id => document.getElementById(id).textContent='—');
+  } else {
+    const tea = (Math.pow(1 + caucionTna/100/365, 365) - 1) * 100;
+    const tem = (Math.pow(1 + caucionTna/100/365, 30) - 1) * 100;
+    document.getElementById('cau-tna').textContent = caucionTna.toFixed(2)+'%';
+    document.getElementById('cau-tea').textContent = tea.toFixed(2)+'%';
+    document.getElementById('cau-tem').textContent = tem.toFixed(4)+'%';
+  }
+  renderTabla();
+}
+
+// ── FETCH PRECIOS YAHOO FINANCE ──────────────────────────────
+async function fetchPreciosYahoo() {
+  if (!lecaps.length) { showAlert('Primero cargá los datos base'); return; }
+  const btn = document.getElementById('btn-yahoo');
+  const stEl = document.getElementById('yahoo-st');
+  btn.disabled = true;
+  stEl.textContent = 'Consultando Yahoo Finance...';
+  stEl.className = 'upload-st loading';
+  setStatus('loading', 'Trayendo precios desde Yahoo Finance...');
+
+  let ok = 0, err = 0;
+
+  for (const l of lecaps) {
+    const ticker = l.ticker + '.BA';
+    try {
+      const resp = await fetch(`${WORKER_URL}/?ticker=${ticker}`);
+      const data = await resp.json();
+      if (data.price && data.price > 0) {
+        let p = data.price;
+        // Yahoo devuelve precio cada 100 VN; multiplicamos x100 para tener precio real
+        if (p < 10) p = p * 100;
+        precios[l.ticker] = p;
+        const inp = document.getElementById('inp-' + l.ticker);
+        if (inp) {
+          inp.value = p.toFixed(2);
+          inp.classList.add('has-value');
+        }
+        ok++;
+      } else {
+        err++;
+      }
+    } catch {
+      err++;
+    }
+    await new Promise(r => setTimeout(r, 150));
+  }
+
+  renderTabla();
+  const hora = new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+  stEl.textContent = `✓ ${ok} precios · ${hora}`;
+  stEl.className = 'upload-st ok';
+  setStatus('ok', `Precios Yahoo Finance · ${hora} · ${ok} actualizados`);
+  if (err > 0) showAlert(`${err} tickers no encontrados en Yahoo Finance`, 'err');
+  else showAlert(`✓ ${ok} precios actualizados desde Yahoo Finance`, 'info');
+  btn.disabled = false;
+}
+
+// ── EXCEL BASE DESDE GITHUB ──────────────────────────────────
+async function cargarExcelGitHub() {
+  setStatus('loading', 'Leyendo lecaps.xlsx...');
+  try {
+    const resp = await fetch(EXCEL_URL + '?t=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    parsearExcelBase(await resp.arrayBuffer());
+    document.getElementById('xlsx-st').textContent = '✓ Cargado desde GitHub';
+    document.getElementById('xlsx-st').className = 'upload-st ok';
+  } catch(e) {
+    setStatus('err', 'Error: ' + e.message);
+    document.getElementById('xlsx-st').textContent = 'Error: ' + e.message;
+    document.getElementById('xlsx-st').className = 'upload-st err';
+    showAlert('No se pudo cargar el Excel base: ' + e.message);
+  }
+}
+
+function cargarExcelManual(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    parsearExcelBase(e.target.result);
+    document.getElementById('xlsx-st').textContent = '✓ ' + file.name;
+    document.getElementById('xlsx-st').className = 'upload-st ok';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parsearExcelBase(buffer) {
+  try {
+    const wb = XLSX.read(buffer, { type:'array', cellDates:true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw: true });
+    lecaps = rows
+      .filter(r => r['Ticker'] && String(r['Ticker']).trim())
+      .map(r => {
+        // Las fechas en el Excel son strings YYYY-MM-DD, las usamos directo
+        const toDate = v => String(v || '').trim();
+        const emision = toDate(r['Fecha Emision']);
+        const venc = toDate(r['Fecha Vencimiento']);
+        const tem = parseFloat(r['TEM (%)']) || null;
+        const vpv = calcularVPV(emision, venc, tem);
+        return {
+          ticker: String(r['Ticker']).trim(),
+          tipo:   String(r['Tipo']||'LECAP').trim(),
+          emision, venc, tem, vpv,
+        };
+      });
+    recalcCaucion();
+    const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    setStatus('ok', `Datos cargados · ${hora} · ${lecaps.length} instrumentos`);
+  } catch(e) {
+    setStatus('err', 'Error parseando Excel');
+    showAlert('Error al leer el Excel: ' + e.message);
+  }
+}
+
+// ── LIMPIAR PRECIOS ──────────────────────────────────────────
+function limpiarPrecios() {
+  precios = {};
+  lecaps.forEach(l => {
+    const inp = document.getElementById('inp-' + l.ticker);
+    if (inp) { inp.value = ''; inp.classList.remove('has-value'); }
+  });
+  document.getElementById('yahoo-st').textContent = '';
+  document.getElementById('yahoo-st').className = 'upload-st';
+  renderTabla();
+}
+
+// ── EDICION DE PRECIO EN TABLA ────────────────────────────────
+function onPrecioChange(ticker, val) {
+  let p = parseFloat(val);
+  const inp = document.getElementById('inp-' + ticker);
+  if (!val || isNaN(p) || p <= 0) {
+    delete precios[ticker];
+    if (inp) inp.classList.remove('has-value');
+  } else {
+    // El precio ingresado ya es el precio real (x100)
+    precios[ticker] = p;
+    if (inp) inp.classList.add('has-value');
+  }
+  renderTabla();
+}
+
+// ── SORT ─────────────────────────────────────────────────────
+function sortBy(col) {
+  sortAsc = sortCol===col ? !sortAsc : (col==='ticker'||col==='venc'||col==='tipo');
+  sortCol = col;
+  renderTabla();
+}
+
+// ── ENRIQUECER ───────────────────────────────────────────────
+function enriquecer() {
+  return lecaps.map(l => {
+    const dias = diasAlVenc(l.venc);
+    const precio = precios[l.ticker] || null;
+    const rend_directo = rendimientoDirecto(l.vpv, precio);
+    const rend_anual = rendimientoDirectoAnualizado(rend_directo, dias);
+    const spread = gananciaCaucion(l.vpv, precio, caucionTna, dias);
+    const tna_be = calcTnaBE(precio, l.vpv, dias);
+    return { ...l, dias, precio, rend_directo, rend_anual, spread, tna_be };
+  });
+}
+
+// ── RENDER TABLA ─────────────────────────────────────────────
+function renderTabla() {
+  const data = enriquecer().sort((a,b) => {
+    let va=a[sortCol], vb=b[sortCol];
+    if (va===null||va===undefined) return 1;
+    if (vb===null||vb===undefined) return -1;
+    if (typeof va==='string') return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    return sortAsc?va-vb:vb-va;
+  });
+
+  document.querySelectorAll('th').forEach(th => {
+    th.classList.remove('sorted');
+    th.textContent = th.textContent.replace(/\s*[▲▼]/,'');
+  });
+  const thEl = document.getElementById('th-'+sortCol);
+  if (thEl) { thEl.classList.add('sorted'); thEl.textContent+=' '+(sortAsc?'▲':'▼'); }
+
+  const tbody = document.getElementById('tbody');
+  const filasExistentes = {};
+  tbody.querySelectorAll('tr[data-ticker]').forEach(tr => {
+    filasExistentes[tr.dataset.ticker] = tr;
+  });
+
+  const fragment = document.createDocumentFragment();
+
+  data.forEach(d => {
+    let tr = filasExistentes[d.ticker];
+
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.dataset.ticker = d.ticker;
+
+      const tipoBadge = d.tipo==='BONCAP'
+        ? `<span style="background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;">BONCAP</span>`
+        : `<span style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;">LECAP</span>`;
+
+      tr.innerHTML = `
+        <td>${d.ticker}</td>
+        <td>${tipoBadge}</td>
+        <td><input class="precio-cell-input" id="inp-${d.ticker}" type="number" step="0.01" placeholder="—" oninput="onPrecioChange('${d.ticker}', this.value)"></td>
+        <td class="td-venc"></td>
+        <td class="td-dias"></td>
+        <td class="td-vpv"></td>
+        <td class="td-rend"></td>
+        <td class="td-rendanual"></td>
+        <td class="td-spread"></td>
+        <td class="td-tnabe"></td>
+      `;
+    }
+
+    const inp = tr.querySelector('.precio-cell-input');
+    if (inp && d.precio !== null && inp.value === '') {
+      inp.value = d.precio.toFixed(2);
+      inp.classList.add('has-value');
+    }
+    if (inp && d.precio !== null) inp.classList.add('has-value');
+    if (inp && d.precio === null) inp.classList.remove('has-value');
+
+    const diasHtml = d.dias!==null
+      ? `<span class="${d.dias<30?'dias-red':'dias-normal'}">${d.dias}d</span>` : '—';
+
+    const rendHtml = d.rend_directo!==null
+      ? `<span class="tir">${d.rend_directo.toFixed(4)}%</span>` : `<span class="no-p">—</span>`;
+
+    const rendAnualHtml = d.rend_anual!==null
+      ? `<span class="tna-v">${d.rend_anual.toFixed(2)}%</span>` : `<span class="no-p">—</span>`;
+
+    const spreadHtml = d.spread!==null
+      ? `<span class="${d.spread>=0?'sp-p':'sp-n'}">${d.spread>=0?'+':''}${d.spread.toFixed(4)}</span>` : `<span class="no-p">—</span>`;
+
+    const tnaBEHtml = d.tna_be!==null
+      ? `<span class="tnabe-v">${d.tna_be.toFixed(2)}%</span>` : `<span class="no-p">—</span>`;
+
+    tr.querySelector('.td-venc').textContent = fmtDate(d.venc);
+    tr.querySelector('.td-dias').innerHTML = diasHtml;
+    tr.querySelector('.td-vpv').style.color = 'var(--text-2)';
+    tr.querySelector('.td-vpv').textContent = d.vpv!==null ? d.vpv.toFixed(4) : '—';
+    tr.querySelector('.td-rend').innerHTML = rendHtml;
+    tr.querySelector('.td-rendanual').innerHTML = rendAnualHtml;
+    tr.querySelector('.td-spread').innerHTML = spreadHtml;
+    tr.querySelector('.td-tnabe').innerHTML = tnaBEHtml;
+
+    fragment.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
+
+  document.getElementById('foot-r').textContent = `${data.length} instrumentos · orden: ${sortCol.replace('_',' ')}`;
+}
+
+cargarExcelGitHub();
+recalcCaucion();
+</script>
+</body>
+</html>
